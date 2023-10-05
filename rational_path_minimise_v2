@@ -1,0 +1,210 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import random
+from sympy import *
+import pandas as pd
+
+a_initial = [1 ,0, 0, 0, -11.19j, 0, 0, 0, -3.38, 0]
+b_initial = [0 ,-3.38, 0, 0, 0, -11.19j, 0, 0, 0, 1]
+# Map 2
+c = [0 ,-1.98, 0, 12.09j, 0, -7.02, 0, 1.77j, 0, 1]
+d = [-1 ,0, -1.77j, 0, 7.02, 0, -12.09j, 0, 1.98, 0]
+
+n_dim = len(a_initial) - 1  # n dimension
+
+"""
+Setting up Möbius transformations
+"""
+def generate_complex_numbers():
+    # Generate a random angle in radians
+    angle_a = random.uniform(0, 2 * np.pi)
+
+    # Calculate the magnitude of a using the relationship |a|^2 + |b|^2 = 1
+    magnitude_a = np.sqrt(1 - random.random())
+
+    # Calculate the magnitude of b
+    magnitude_b = np.sqrt(1 - magnitude_a**2)
+
+    # Convert polar coordinates to rectangular coordinates
+    real_a = magnitude_a * np.cos(angle_a)
+    imag_a = magnitude_a * np.sin(angle_a)
+
+    # The imaginary part of b will be chosen randomly
+    real_b = random.uniform(-magnitude_b, magnitude_b)
+    imag_b = np.sqrt(magnitude_b**2 - real_b**2)
+
+    # Account for negative imaginary part of b with a 50% chance
+    if random.random() < 0.5:
+        imag_b *= -1
+
+    complex_a = complex(real_a, imag_a)
+    complex_b = complex(real_b, imag_b)
+
+    return complex_a, complex_b
+
+# Format complex numbers in a+bj format without commas
+def format_complex_number(num):
+    if num.imag == 0:
+        return f"{num.real:.3f}"
+    elif num.real == 0:
+        return f"{num.imag:.3f}j"
+    else:
+        return f"{num.real:.3f}{'+' if num.imag >= 0 else '-'}{abs(num  .imag):.3f}j"
+
+def format_complex_array(arr):
+    formatted_arr = [format_complex_number(num) for num in arr]
+    return ', '.join(formatted_arr)  # Join the formatted complex values
+
+complex_symbol = symbols('z', complex=True)
+
+def mob_domain_trans(p_coeff, q_coeff, c_1, c_2):
+    p = 0
+    q = 0
+
+    p = sum(p_coeff[i] * (-conjugate(c_2) * complex_symbol + conjugate(c_1))**(n_dim - i) * (c_1 * complex_symbol + c_2)**i for i in range(n_dim + 1))
+    q = sum(q_coeff[i] * (-conjugate(c_2) * complex_symbol + conjugate(c_1))**(n_dim - i) * (c_1 * complex_symbol + c_2)**i for i in range(n_dim + 1))
+
+    expanded_p = expand(p)
+    expanded_q = expand(q)
+
+    p_domain_trans = [0] * (n_dim+1)
+    q_domain_trans = [0] * (n_dim+1)
+
+    for i in range(0, n_dim+1):
+        p_domain_trans[i] = expanded_p.coeff(complex_symbol, n_dim-i)
+        q_domain_trans[i] = expanded_q.coeff(complex_symbol, n_dim-i)
+
+    # Convert to NumPy complex arrays
+    p_domain_trans_coeff = np.array(p_domain_trans, dtype=np.complex128)
+    q_domain_trans_coeff = np.array(q_domain_trans, dtype=np.complex128)
+
+    #p_domain_trans_coeff = format_complex_array(p_domain_trans_coeff)
+    #q_domain_trans_coeff = format_complex_array(q_domain_trans_coeff)
+
+    return p_domain_trans_coeff, q_domain_trans_coeff
+
+def mob_target_trans (p_coeff, q_coeff, c_1, c_2):
+    parameter_matrix = [[c_1, c_2], [-np.conjugate(c_2), np.conjugate(c_1)]]
+    target_matrix = np.matmul(parameter_matrix, [p_coeff, q_coeff])
+
+    p_target_trans_coeff = target_matrix[0]
+    q_target_trans_coeff = target_matrix[1]
+
+    return p_target_trans_coeff, q_target_trans_coeff
+
+"""
+Create path
+"""
+def interpolate_coeffs(a, c, t):
+    if len(a) != len(c):
+        raise ValueError("Lists 'a' and 'c' must have the same length for linear interpolation.")
+    return [a[i] + t * (c[i] - a[i]) for i in range(n_dim+1)]
+
+def polynomial_eval(coefficients, z):
+    return np.polyval(coefficients, z)
+
+def compute_density(z, p, p_prime, q, q_prime): #fix this density
+    den1 = np.abs(p_prime * q - q_prime * p)
+    den2 = np.real(q)**2 + np.imag(q)**2 + np.real(p)**2 + np.imag(p)**2
+    return ((1 + np.real(z)**2 + np.imag(z)**2)**2) * (den1/den2)**4
+
+
+def integrand(x, y, t):
+    f = interpolate_coeffs(a, c, t)
+    g = interpolate_coeffs(b, d, t)
+    z = x + 1j * y
+
+    p = polynomial_eval(f, z)       # Initialize p
+    q = polynomial_eval(g, z)       # Initialize q
+
+    p_prime = polynomial_eval(np.polyder(f), z)
+    q_prime = polynomial_eval(np.polyder(g), z)
+
+    density = compute_density(z, p, p_prime, q, q_prime)
+
+    return density
+
+def compute_integral(step_size, tiles, t):
+    integral = 0
+    for i in range (-tiles, tiles):
+        for j in range (-tiles, tiles):
+            integral = integral + integrand(i*step_size, j*step_size, t)*(step_size**2)
+    return integral / np.pi
+
+"""
+Computing Integral
+"""
+size        = 10               # [-size,size] x [-size,size] grid
+step_size   = 0.2              # step size
+comp        = 100              # no. of computations along path is comp+1
+
+tiles = int(size/step_size)    # no. of tiles is 2*til^2
+
+I_array = np.zeros(comp + 1)
+
+def compute_path():
+    for k in range(comp + 1):
+        time = k/comp
+        integral_t = compute_integral(step_size, tiles, time)
+        I_array[k] = integral_t
+        print(integral_t)
+
+iterations      = 1000
+
+mob_alpha_min = "none"
+mob_beta_min  = "none"
+mob_delta_min = "none"
+mob_gamma_min = "none"
+
+print("Iteration", 0)
+a = a_initial
+b = b_initial
+compute_path()
+I_max = max(I_array)
+I_min = min(I_array)
+
+for i in range(1, iterations+1):
+    print("Iteration", i)
+
+    mob_alpha, mob_beta     = generate_complex_numbers()
+    mob_gamma, mob_delta    = generate_complex_numbers()
+
+    a = a_initial
+    b = b_initial
+
+    a, b = mob_domain_trans(a, b, mob_alpha, mob_beta)
+    a, b = mob_target_trans(a, b, mob_gamma, mob_delta)
+
+    integral_test = compute_integral(step_size, tiles, 0.5)
+
+    if integral_test >= I_max:
+        pass
+    else:
+        for k in range(comp + 1):
+            time = k/comp
+            integral_t = compute_integral(step_size, tiles, time)
+            I_array[k] = integral_t
+            print(integral_t)
+            if integral_t >= I_max:
+                break
+            elif time == 1:
+                mob_alpha_min = mob_alpha
+                mob_beta_min  = mob_beta
+                mob_delta_min = mob_delta
+                mob_gamma_min = mob_gamma
+                I_max = max(I_array)
+                I_min = min(I_array)
+
+
+
+
+"""
+Print values
+"""
+print("mob_alpha:", mob_alpha_min)
+print("mob_beta:", mob_beta_min)
+print("mob_gamma:", mob_gamma_min)
+print("mob_delta:", mob_delta_min)
+print(I_max)
+print(I_min)
+print("Energy Barrier", I_max - I_min)

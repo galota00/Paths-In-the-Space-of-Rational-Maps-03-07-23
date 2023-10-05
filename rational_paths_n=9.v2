@@ -1,0 +1,92 @@
+import numpy as np
+
+# ---------- Computes I along a path in the space of rational maps ----------
+
+# B = 9
+#a = [1 ,0, 0, 0, -11.19j, 0, 0, 0, -3.38, 0]   # Numerator
+#b = [0 ,-3.38, 0, 0, 0, -11.19j, 0, 0, 0, 1]   # Denominator
+a = [ -0.347+0.599j, 0.086-1.198j, -1.622+2.779j, 4.167-3.843j, 3.716-2.961j, 2.950-9.969j, 3.578+0.779j, 0.797+3.020j, 0.130-0.670j, -0.642+0.164j ]
+b = [ -0.160+0.145j, 1.725+1.924j, 1.392+1.833j, -5.422-1.368j, 6.303+2.123j, -1.322-1.092j, -1.092+6.543j, 1.672+0.943j, 1.607+2.292j, -0.002+0.298j ]
+
+c = [0 ,-1.98, 0, 12.09j, 0, -7.02, 0, 1.77j, 0, 1]
+d = [-1 ,0, -1.77j, 0, 7.02, 0, -12.09j, 0, 1.98, 0]
+# Map 2
+#a = [0, 0, -8.67, 0, 0, 0, 14.75j, 0, 0, 0, 1]
+#b = [1, 0, 0, 0, 14.75j, 0, 0, 0, -8.67, 0, 0]
+
+#a = [-0.13, 0, 0, -0.84, 0, 0, -2.47, 0, 0, 1, 0, 0]
+#b = [0, 0, 1, 0, 0, -2.47, 0, 0, -0.84, 0, 0, -0.13]
+
+#c = [-0.13, 0, 0, -0.84, 0, 0, -2.47, 0, 0, 1, 0, 0]
+#d = [0, 0, 1, 0, 0, -2.47, 0, 0, -0.84, 0, 0, -0.13]
+
+# B = 9*
+#a = [1, 0, 3.94j, 0, -3.07, 0]
+#b = [0, -3.07, 0, 3.94j, 0 ,1]
+
+#c = [1, 0, -3.94j, 0, -3.07, 0]
+#d = [0, -3.07, 0, -3.94j, 0 ,1]
+
+#a = [ -1.255+0.234j, 0.130-0.736j, -0.297-1.219j, -0.882+2.665j, -1.642+1.104j, 0.973+0.144j ]
+#b = [ 0.298+0.281j, -0.409-1.460j, 2.109-4.002j, -2.068-0.707j, 2.161-0.523j, 0.537-0.089j ]
+# Map 2
+#c = [1, 0, 0, 0, -5, 0]
+#d = [0, -5, 0, 0, 0 ,1]
+
+# Create functions f(t) and g(t) that map between coefficients
+def interpolate_coeffs(a, c, t):
+    if len(a) != len(c):
+        raise ValueError("Lists 'a' and 'c' must have the same length for interpolation.")
+    return [a[i] + t * (c[i] - a[i]) for i in range(len(a))]
+
+def polynomial_eval(coefficients, z):
+    return np.polyval(coefficients, z)
+
+def compute_density(z, p, p_prime, q, q_prime): #fix this density
+    den1 = np.abs(p_prime * q - q_prime * p)
+    den2 = np.real(q)**2 + np.imag(q)**2 + np.real(p)**2 + np.imag(p)**2
+    return ((1 + np.real(z)**2 + np.imag(z)**2)**2) * (den1/den2)**4
+
+
+def integrand(x, y, t):
+    f = interpolate_coeffs(a, c, t)
+    g = interpolate_coeffs(b, d, t)
+    z = x + 1j * y
+
+    p = polynomial_eval(f, z)       # Initialize p
+    q = polynomial_eval(g, z)       # Initialize q
+
+    p_prime = polynomial_eval(np.polyder(f), z)
+    q_prime = polynomial_eval(np.polyder(g), z)
+
+    density = compute_density(z, p, p_prime, q, q_prime)
+
+    return density
+# ------------------------------------------------------------------------------
+
+def compute_integral(step_size, tiles, t):
+    integral = 0
+    for i in range (-tiles, tiles):
+        for j in range (-tiles, tiles):
+            integral = integral + integrand(i*step_size, j*step_size, t)*(step_size**2)
+    return integral / np.pi
+
+"""
+Computing Integral
+"""
+size        = 10               # [-size,size] x [-size,size] grid
+step_size   = 0.1              # step size
+comp        = 100              # no. of computations along path is comp+1
+
+tiles = int(size/step_size)    # no. of tiles is 2*til^2
+
+I_array = np.zeros(comp + 1)
+
+def compute_path():
+    for k in range(comp + 1):
+        time = k/comp
+        integral_t = compute_integral(step_size, tiles, time)
+        I_array[k] = integral_t
+        print(integral_t)
+
+compute_path()
